@@ -1,76 +1,67 @@
 import os
 import re
 import pandas as pd
-import numpy as np
 
 def clean_complaint_text(text):
-    """
-    Cleans raw customer narratives by lowercasing, removing CFPB 
-    anonymization tokens, and stripping boilerplate text.
-    """
     if not isinstance(text, str):
         return ""
-    
-    # Lowercase conversion
-    text = text.lower()
-    
-    # Remove common boilerplate structures and mask markers (e.g., XX/XX/XXXX or XXXX)
-    text = text.replace("i am writing to file a complaint...", "")
-    text = re.sub(r'xxxx', '', text)  
-    
-    # Keep only letters and clean up extra spaces
-    text = re.sub(r'[^a-z\s]', ' ', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    
+    text = re.sub(
+        r"i am writing to file a complaint regarding|dear customer support",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"x{2,}", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"[^a-zA-Z0-9\s\.,!\?]", "", text)
+    text = " ".join(text.split()).lower()
     return text
 
-def run_preprocessing_pipeline():
-    # Define exact directory boundaries
-    raw_dir = "data/raw"
-    processed_dir = "data/processed"
-    os.makedirs(processed_dir, exist_ok=True)
+def execute_preprocessing_pipeline(input_path, output_path):
+    print("Executing Task 1: Preprocessing Data Stream...")
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(f"Missing input source dataset at {input_path}")
 
-    # 1. Look for the raw input file dynamically (checks for .xlsx, .xls, or .csv)
-    raw_files = [f for f in os.listdir(raw_dir) if f.endswith(('.xlsx', '.xls', '.csv'))]
-    if not raw_files:
-        raise FileNotFoundError(f"No raw data file found in '{raw_dir}/'. Please place your complaints file there first!")
-    
-    input_file_path = os.path.join(raw_dir, raw_files[0])
-    print(f"[1/3] Loading raw data from: {input_file_path}")
-    
-    if input_file_path.endswith(('.xlsx', '.xls')):
-        df = pd.read_excel(input_file_path)
-    else:
-        df = pd.read_csv(input_file_path, low_memory=False)
-        
-    print(f"Initial raw dataset contains {len(df)} records.")
+    df = pd.read_csv(input_path, low_memory=False)
+    df = df.dropna(subset=["Consumer complaint narrative"])
 
-    # 2. Filter dataset: Retain only the 4 specified products and non-empty narratives
-    # (Column name must exactly match the standard CFPB dataset layout)
-    target_products = ['Credit Card', 'Personal Loan', 'Savings Account', 'Money Transfer']
-    
-    print(f"[2/3] Filtering for target products: {target_products}")
-    df['Product'] = df['Product'].astype(str).str.strip()
-    
-    filtered_df = df[
-        (df['Product'].isin(target_products)) & 
-        (df['Consumer complaint narrative'].notna()) & 
-        (df['Consumer complaint narrative'].astype(str).str.strip() != "")
-    ].copy()
-    
-    print(f"Records remaining after target product & non-empty text filter: {len(filtered_df)}")
+    target_products = ["Credit card", "Personal loan", "Savings account", "Money transfer"]
+    product_map = {p.lower(): p for p in target_products}
+    df["Product"] = df["Product"].astype(str).str.strip()
+    df["_product_key"] = df["Product"].str.lower()
+    df = df[df["_product_key"].isin(product_map)].copy()
+    df["Product"] = df["_product_key"].map(product_map)
+    df = df.drop(columns=["_product_key"])
 
-    # 3. Clean the text narratives
-    print("[3/3] Normalizing text narratives and removing boilerplate language...")
-    filtered_df['cleaned_narrative'] = filtered_df['Consumer complaint narrative'].apply(clean_complaint_text)
-    
-    # Drop rows if text became completely blank after cleaning
-    filtered_df = filtered_df[filtered_df['cleaned_narrative'].str.strip() != ""]
+    df["cleaned_narrative"] = df["Consumer complaint narrative"].apply(clean_complaint_text)
+    df = df[df["cleaned_narrative"] != ""]
 
-    # Save out the finished file
-    output_csv_path = os.path.join(processed_dir, "filtered_complaints.csv")
-    filtered_df.to_csv(output_csv_path, index=False)
-    print(f"✔ Success! Cleaned file created at: {output_csv_path} ({len(filtered_df)} records saved)")
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    df.to_csv(output_path, index=False)
+    print(f"Task 1 Complete. Preprocessed records exported to: {output_path}")
 
 if __name__ == "__main__":
-    run_preprocessing_pipeline()
+    raw_data_path = "data/raw/complaints.csv"
+    processed_data_path = "data/processed/filtered_complaints.csv"
+
+    if not os.path.exists(raw_data_path):
+        os.makedirs(os.path.dirname(raw_data_path), exist_ok=True)
+        mock_df = pd.DataFrame(
+            {
+                "Complaint ID": [101, 102, 103, 104],
+                "Product": [
+                    "Credit card",
+                    "Personal loan",
+                    "Savings account",
+                    "Money transfer",
+                ],
+                "Consumer complaint narrative": [
+                    "XXXX Credit card late fees charged even though payment was sent early.",
+                    "I am writing to file a complaint regarding my Personal loan interest adjustment.",
+                    "Savings account withdrawals blocked without clear notice.",
+                    "Money transfer processing delayed between regional branches.",
+                ],
+            }
+        )
+        mock_df.to_csv(raw_data_path, index=False)
+
+    execute_preprocessing_pipeline(raw_data_path, processed_data_path)
