@@ -1,23 +1,35 @@
-# Byte-compiled / optimized / DLL files
 __pycache__/
-*.py[cod]
-*$py.class
-
-# Environments
+*.pyc
+*.pyo
+.env
 .venv/
 venv/
 ENV/
 
-# Data and Vector Storage (Crucial for RAG projects)
+# Large data files
 data/raw/*
-data/processed/*
 !data/raw/.gitkeep
+data/processed/*
 !data/processed/.gitkeep
-vector_store/
 
-# Jupyter Notebook checkpoints
+# Vector store binaries (large)
+vector_store/*
+!vector_store/.gitkeep
+
+# Jupyter
 .ipynb_checkpoints/
+*.ipynb_checkpoints
 
-# OS files
+# HuggingFace / Torch model cache
+.cache/
+models/
+*.bin
+*.safetensors
+
+# Pytest / IDE
+.pytest_cache/
 .DS_Store
 Thumbs.db
+*.egg-info/
+dist/
+build/
